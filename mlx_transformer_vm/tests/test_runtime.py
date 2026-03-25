@@ -6,6 +6,7 @@ import mlx.core as mx
 import numpy as np
 
 from mlx_transformer_vm.attention import StandardKVCache
+from mlx_transformer_vm.attention.standard_cache import exact_hardmax_attention
 from mlx_transformer_vm.model import VanillaTransformer, add_position_encoding
 
 
@@ -18,7 +19,52 @@ def test_add_position_encoding_matches_upstream_formula():
     assert np.isclose(np.array(out[2]), 9.0)
 
 
-def test_standard_cache_matches_manual_softmax():
+def test_exact_hardmax_attention_averages_ties():
+    out = exact_hardmax_attention(
+        mx.array([[1.0, 0.0]], dtype=mx.float32),
+        mx.array(
+            [
+                [[1.0, 0.0]],
+                [[1.0, 0.0]],
+            ],
+            dtype=mx.float32,
+        ),
+        mx.array(
+            [
+                [[3.0, 1.0]],
+                [[5.0, 7.0]],
+            ],
+            dtype=mx.float32,
+        ),
+    )
+
+    assert np.allclose(np.array(out), np.array([4.0, 4.0], dtype=np.float32))
+
+
+def test_exact_hardmax_attention_latest_picks_latest_tie():
+    out = exact_hardmax_attention(
+        mx.array([[1.0, 0.0]], dtype=mx.float32),
+        mx.array(
+            [
+                [[1.0, 0.0]],
+                [[1.0, 0.0]],
+            ],
+            dtype=mx.float32,
+        ),
+        mx.array(
+            [
+                [[3.0, 1.0]],
+                [[5.0, 7.0]],
+            ],
+            dtype=mx.float32,
+        ),
+        prefer_latest=True,
+    )
+
+    assert np.allclose(np.array(out), np.array([5.0, 7.0], dtype=np.float32))
+
+
+def test_standard_cache_matches_manual_hardmax():
     cache = StandardKVCache(n_layers=1, n_heads=2)
     cache.layer_step(
         0,
@@ -33,13 +79,28 @@ def test_standard_cache_matches_manual_softmax():
         mx.array([5.0, 7.0, 11.0, 13.0], dtype=mx.float32),
     )
 
-    scores_h0 = np.array([1.0, 0.0])
-    weights = np.exp(scores_h0) / np.exp(scores_h0).sum()
-    expected_h0 = weights[0] * np.array([3.0, 1.0]) + weights[1] * np.array([5.0, 7.0])
-    expected_h1 = weights[0] * np.array([2.0, 4.0]) + weights[1] * np.array([11.0, 13.0])
-    expected = np.concatenate([expected_h0, expected_h1])
+    expected = np.array([3.0, 1.0, 2.0, 4.0], dtype=np.float32)
 
     assert np.allclose(np.array(out), expected)
+
+
+def test_standard_cache_set_tiebreak_picks_latest():
+    cache = StandardKVCache(n_layers=1, n_heads=1)
+    cache.set_tiebreak(0, 0, True)
+    cache.layer_step(
+        0,
+        mx.array([1.0, 0.0], dtype=mx.float32),
+        mx.array([1.0, 0.0], dtype=mx.float32),
+        mx.array([3.0, 1.0], dtype=mx.float32),
+    )
+    out = cache.layer_step(
+        0,
+        mx.array([1.0, 0.0], dtype=mx.float32),
+        mx.array([1.0, 0.0], dtype=mx.float32),
+        mx.array([5.0, 7.0], dtype=mx.float32),
+    )
+
+    assert np.allclose(np.array(out), np.array([5.0, 7.0], dtype=np.float32))
 
 
 def test_transformer_generate_with_cache_stops_on_stop_token():
