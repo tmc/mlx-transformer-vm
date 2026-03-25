@@ -1,0 +1,47 @@
+[project]
+name = "mlx-transformer-vm"
+version = "0.1.0"
+description = "MLX Python port of Percepta's transformer-vm"
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "mlx>=0.26.0",
+    "numpy>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.9.0",
+]
+
+[project.scripts]
+wasm-eval-mlx = "mlx_transformer_vm.evaluator:main"
+wasm-reference-mlx = "mlx_transformer_vm.wasm.reference:main"
+tvm-mlx-parity = "mlx_transformer_vm.parity:main"
+
+[build-system]
+requires = ["setuptools>=82.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["mlx_transformer_vm*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mlx_transformer_vm"]
+
+[tool.pytest.ini_options]
+testpaths = ["mlx_transformer_vm/tests"]
+addopts = "-v --tb=short"
+markers = [
+    "slow: marks tests that compile upstream examples",
+]
