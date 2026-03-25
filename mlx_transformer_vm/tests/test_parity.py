@@ -20,3 +20,5 @@ def test_example_parity(example, args, tmp_path):
 
     assert result["reference_ok"], example
     assert result["evaluator_ok"], example
+    if result["weighted_available"]:
+        assert result["weighted_ok"], example
