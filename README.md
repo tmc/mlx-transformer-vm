@@ -15,14 +15,15 @@ Ported now:
 - exact graph evaluator in [`mlx_transformer_vm/evaluator.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/evaluator.py)
 - WASM machine graph builder in [`mlx_transformer_vm/wasm/interpreter.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/wasm/interpreter.py)
 - reference WASM interpreter in [`mlx_transformer_vm/wasm/reference.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/wasm/reference.py)
+- deterministic scheduler in [`mlx_transformer_vm/scheduler/deterministic.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/scheduler/deterministic.py)
+- MLX standard-cache runtime skeleton in [`mlx_transformer_vm/model/transformer.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/model/transformer.py) and [`mlx_transformer_vm/attention/standard_cache.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/attention/standard_cache.py)
 - upstream parity harness in [`mlx_transformer_vm/parity.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/parity.py)
 
 Still missing:
 
-- scheduler/allocation parity
+- MILP scheduler parity
 - analytical weight construction
-- MLX transformer runtime
-- standard and hull KV caches
+- hull KV cache
 - specialization path
 - full CLI parity for build/run/compile/specialize
 
