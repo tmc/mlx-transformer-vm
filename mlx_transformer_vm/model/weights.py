@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import io
+import json
 import logging
+import os
+import zipfile
 from collections import defaultdict
 
 import mlx.core as mx
 import numpy as np
 import yaml
-from mlx.utils import tree_unflatten
+from mlx.utils import tree_flatten, tree_unflatten
 
 from mlx_transformer_vm.graph.core import (
     Expression,
@@ -537,3 +541,92 @@ def build_model(
         input_dims,
     )
     return model, all_tokens, tok_to_idx_map, shared
+
+
+def flops_per_token(model):
+    d_model = model.tok.weight.shape[1]
+    n_layers = len(model.attn)
+    d_ffn = model.ff_in[0].weight.shape[0] // 2
+    vocab = model.head.weight.shape[0]
+    per_layer = 8 * d_model * d_model + 6 * d_model * d_ffn
+    return n_layers * per_layer + 2 * vocab * d_model
+
+
+def save_weights(model, all_tokens, path, metadata=None):
+    """Save model weights to a self-describing archive."""
+
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    meta = {
+        "format": "mlx-transformer-vm.v1",
+        "all_tokens": list(all_tokens),
+        "config": {
+            "vocab": len(all_tokens),
+            "d_model": model.d_model,
+            "n_layers": model.n_layers,
+            "n_heads": model.n_heads,
+            "d_ffn": model.d_ffn,
+            "stop_token_id": model.stop_token_id,
+        },
+        "attn_erase": getattr(model, "attn_erase", None),
+        "ffn_erase": getattr(model, "ffn_erase", None),
+        "head_tiebreak": getattr(model, "head_tiebreak", None),
+    }
+    if metadata:
+        meta["extra"] = metadata
+
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("metadata.json", json.dumps(meta, sort_keys=True))
+        for name, value in tree_flatten(model.parameters()):
+            buffer = io.BytesIO()
+            np.save(buffer, np.array(value), allow_pickle=False)
+            archive.writestr(f"arrays/{name}.npy", buffer.getvalue())
+
+    logger.info("saved weights to %s (%s bytes)", path, f"{os.path.getsize(path):,}")
+
+
+def load_weights(path):
+    """Load model weights from a file produced by :func:`save_weights`."""
+
+    with zipfile.ZipFile(path) as archive:
+        metadata = json.loads(archive.read("metadata.json"))
+        if metadata.get("format") != "mlx-transformer-vm.v1":
+            raise ValueError(f"unsupported model format in {path!r}")
+
+        config = metadata["config"]
+        model = VanillaTransformer(
+            vocab=config["vocab"],
+            d_model=config["d_model"],
+            n_heads=config["n_heads"],
+            n_layers=config["n_layers"],
+            d_ffn=config["d_ffn"],
+            stop_token_id=config["stop_token_id"],
+        )
+
+        weights = []
+        for info in sorted(archive.infolist(), key=lambda item: item.filename):
+            if not info.filename.startswith("arrays/") or not info.filename.endswith(".npy"):
+                continue
+            name = info.filename[len("arrays/") : -len(".npy")]
+            array = np.load(io.BytesIO(archive.read(info.filename)), allow_pickle=False)
+            weights.append((name, mx.array(array, dtype=DEFAULT_DTYPE)))
+        model.update(tree_unflatten(weights))
+
+        if metadata.get("attn_erase") is not None:
+            model.attn_erase = metadata["attn_erase"]
+        if metadata.get("ffn_erase") is not None:
+            model.ffn_erase = metadata["ffn_erase"]
+        if metadata.get("head_tiebreak") is not None:
+            model.head_tiebreak = metadata["head_tiebreak"]
+
+    all_tokens = metadata["all_tokens"]
+    tok_to_idx_map = {token: index for index, token in enumerate(all_tokens)}
+    logger.info(
+        "loaded weights from %s (vocab=%d, d_model=%d, n_layers=%d, n_heads=%d, d_ffn=%d)",
+        path,
+        config["vocab"],
+        config["d_model"],
+        config["n_layers"],
+        config["n_heads"],
+        config["d_ffn"],
+    )
+    return model, all_tokens, tok_to_idx_map

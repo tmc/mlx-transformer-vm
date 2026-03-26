@@ -57,8 +57,11 @@ class StandardKVCache:
         self._prefer_latest[layer][head] = bool(latest)
 
     def layer_step(self, layer, keys, queries, values):
-        self._keys[layer].append(mx.array(keys))
-        self._vals[layer].append(mx.array(values))
+        key_array = mx.array(keys)
+        value_array = mx.array(values)
+        mx.eval(key_array, value_array)
+        self._keys[layer].append(key_array)
+        self._vals[layer].append(value_array)
 
         head_dim = keys.shape[0] // self.n_heads
         keys_stacked = mx.stack(self._keys[layer], axis=0).reshape((-1, self.n_heads, head_dim))

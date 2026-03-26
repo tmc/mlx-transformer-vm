@@ -41,8 +41,9 @@ class WeightOnlyLinear(nn.Module):
 
 
 class AttentionLayer(nn.Module):
-    def __init__(self, d_model):
+    def __init__(self, d_model, n_heads):
         super().__init__()
+        self.num_heads = n_heads
         self.in_proj_weight = mx.zeros((3 * d_model, d_model), dtype=DEFAULT_DTYPE)
         self.out_proj = WeightOnlyLinear(d_model, d_model)
 
@@ -59,7 +60,7 @@ class VanillaTransformer(nn.Module):
         self.d_ffn = d_ffn
 
         self.tok = TokenEmbedding(vocab, d_model)
-        self.attn = [AttentionLayer(d_model) for _ in range(n_layers)]
+        self.attn = [AttentionLayer(d_model, n_heads) for _ in range(n_layers)]
         self.ff_in = [WeightOnlyLinear(2 * d_ffn, d_model) for _ in range(n_layers)]
         self.ff_out = [WeightOnlyLinear(d_model, d_ffn) for _ in range(n_layers)]
         self.head = WeightOnlyLinear(vocab, d_model)
@@ -95,6 +96,7 @@ class VanillaTransformer(nn.Module):
         for pos in range(prompt_len):
             token_id = idx_list[pos]
             logits = self.step_logits(token_id, pos, cache)
+            mx.eval(logits)
 
         if logits is None:
             return mx.array([idx_list], dtype=mx.int32)
@@ -105,5 +107,6 @@ class VanillaTransformer(nn.Module):
             if next_id == self.stop_token_id:
                 break
             logits = self.step_logits(next_id, prompt_len + gen_idx, cache)
+            mx.eval(logits)
 
         return mx.array([idx_list], dtype=mx.int32)

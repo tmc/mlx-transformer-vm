@@ -23,6 +23,10 @@ dev = [
 wasm-eval-mlx = "mlx_transformer_vm.evaluator:main"
 wasm-reference-mlx = "mlx_transformer_vm.wasm.reference:main"
 tvm-mlx-parity = "mlx_transformer_vm.parity:main"
+wasm-compile = "mlx_transformer_vm.compilation.compile_wasm:main"
+wasm-build = "mlx_transformer_vm.build:main"
+wasm-run = "mlx_transformer_vm.runner:main"
+wasm-specialize = "mlx_transformer_vm.specialize:main"
 
 [build-system]
 requires = ["setuptools>=82.0.0"]
