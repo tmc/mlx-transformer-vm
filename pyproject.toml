@@ -8,6 +8,7 @@ license = { text = "Apache-2.0" }
 dependencies = [
     "mlx>=0.26.0",
     "numpy>=2.0.0",
+    "pulp>=2.8.0",
     "PyYAML>=6.0",
 ]
 

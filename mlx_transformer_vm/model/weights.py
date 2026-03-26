@@ -19,7 +19,7 @@ from mlx_transformer_vm.graph.core import (
     _all_dims,
 )
 from mlx_transformer_vm.model.transformer import DEFAULT_DTYPE, VanillaTransformer
-from mlx_transformer_vm.scheduler.deterministic import deterministic_schedule
+from mlx_transformer_vm.scheduler import milp_schedule
 from mlx_transformer_vm.wasm.interpreter import WASMMachine
 
 logger = logging.getLogger(__name__)
@@ -143,12 +143,13 @@ def build_model(
         if plan_path:
             n_layers, std_layers, alive_after = _load_plan(plan_path, all_dims)
         else:
-            schedule = deterministic_schedule(
+            schedule = milp_schedule(
                 input_tokens,
                 output_tokens,
                 max_layers=max_layers,
                 max_ffn=max_ffn,
                 program_graph=program_graph or pg,
+                log=logger.info,
             )
             std_layers = schedule["std_layers"]
             n_layers = schedule["num_layers"]

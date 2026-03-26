@@ -16,13 +16,13 @@ Ported now:
 - WASM machine graph builder in [`mlx_transformer_vm/wasm/interpreter.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/wasm/interpreter.py)
 - reference WASM interpreter in [`mlx_transformer_vm/wasm/reference.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/wasm/reference.py)
 - deterministic scheduler in [`mlx_transformer_vm/scheduler/deterministic.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/scheduler/deterministic.py)
+- MILP scheduler in [`mlx_transformer_vm/scheduler/milp.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/scheduler/milp.py)
 - MLX standard-cache runtime skeleton in [`mlx_transformer_vm/model/transformer.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/model/transformer.py) and [`mlx_transformer_vm/attention/standard_cache.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/attention/standard_cache.py)
 - analytical weight construction in [`mlx_transformer_vm/model/weights.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/model/weights.py)
 - upstream parity harness in [`mlx_transformer_vm/parity.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/parity.py), comparing this repo against upstream reference traces and, when available, upstream weighted execution
 
 Still missing:
 
-- MILP scheduler parity
 - hull KV cache
 - specialization path
 - full CLI parity for build/run/compile/specialize
@@ -39,7 +39,7 @@ The port stays structurally close to upstream:
 | `transformer_vm/wasm/reference.py` | `mlx_transformer_vm/wasm/reference.py` |
 | `transformer_vm/model/weights.py` | `mlx_transformer_vm/model/weights.py` |
 | `transformer_vm/model/transformer.py` | `mlx_transformer_vm/model/transformer.py` |
-| `transformer_vm/scheduler/milp.py` | `mlx_transformer_vm/scheduler/` (planned) |
+| `transformer_vm/scheduler/milp.py` | `mlx_transformer_vm/scheduler/milp.py` |
 | `transformer_vm/compilation/*` | `mlx_transformer_vm/compilation/` (planned) |
 
 ## Development
