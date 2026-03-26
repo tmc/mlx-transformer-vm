@@ -1,3 +1,8 @@
+// Copyright 2026 Percepta
+// Licensed under the Apache License, Version 2.0.
+// Obtained from https://github.com/Percepta-Core/transformer-vm
+// SPDX-License-Identifier: Apache-2.0
+
 /* Long addition of two variable-length decimal numbers.
  * Input format: AAAA+BBBB  (no spaces, no leading zeros except "0" itself)
  * Output: the decimal sum followed by newline. */

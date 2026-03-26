@@ -1,0 +1,16 @@
+mlx-transformer-vm
+Copyright 2026 Travis Cline
+
+This project is a derivative work of transformer-vm, originally developed by
+Percepta (https://github.com/Percepta-Core/transformer-vm), licensed under the
+Apache License, Version 2.0.
+
+The following files are copied verbatim from the upstream project:
+
+  mlx_transformer_vm/compilation/decoder.py
+  mlx_transformer_vm/compilation/lower.py
+  mlx_transformer_vm/compilation/runtime.h
+  examples/addition.c
+  examples/collatz.c
+  examples/fibonacci.c
+  examples/hello.c

@@ -1,3 +1,8 @@
+# Copyright 2026 Percepta
+# Licensed under the Apache License, Version 2.0.
+# Obtained from https://github.com/Percepta-Core/transformer-vm
+# SPDX-License-Identifier: Apache-2.0
+
 """Wasm MVP binary decoder.
 
 Parses a .wasm file into structured sections and decoded instruction

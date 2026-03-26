@@ -1,3 +1,8 @@
+# Copyright 2026 Percepta
+# Licensed under the Apache License, Version 2.0.
+# Obtained from https://github.com/Percepta-Core/transformer-vm
+# SPDX-License-Identifier: Apache-2.0
+
 """WASM instruction lowering pass.
 
 Replaces hard-to-simulate WASM instructions (MUL, DIV_U, DIV_S, REM_U, REM_S,
