@@ -89,15 +89,21 @@ class VanillaTransformer(nn.Module):
                         cache.set_tiebreak(layer_idx, head_idx, True)
 
         idx_list = np.array(idx).reshape(-1).tolist()
-        limit = len(idx_list) + max_new_tokens
+        prompt_len = len(idx_list)
+        logits = None
 
-        for pos in range(limit):
+        for pos in range(prompt_len):
             token_id = idx_list[pos]
             logits = self.step_logits(token_id, pos, cache)
-            if pos + 1 == len(idx_list):
-                next_id = int(mx.argmax(logits).item())
-                idx_list.append(next_id)
-                if next_id == self.stop_token_id:
-                    break
+
+        if logits is None:
+            return mx.array([idx_list], dtype=mx.int32)
+
+        for gen_idx in range(max_new_tokens):
+            next_id = int(mx.argmax(logits).item())
+            idx_list.append(next_id)
+            if next_id == self.stop_token_id:
+                break
+            logits = self.step_logits(next_id, prompt_len + gen_idx, cache)
 
         return mx.array([idx_list], dtype=mx.int32)
