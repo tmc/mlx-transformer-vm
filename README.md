@@ -20,12 +20,9 @@ Ported now:
 - MLX standard-cache runtime skeleton in [`mlx_transformer_vm/model/transformer.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/model/transformer.py) and [`mlx_transformer_vm/attention/standard_cache.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/attention/standard_cache.py)
 - hull KV cache bridge in [`mlx_transformer_vm/attention/hull_cache.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/attention/hull_cache.py)
 - analytical weight construction in [`mlx_transformer_vm/model/weights.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/model/weights.py)
-- upstream parity harness in [`mlx_transformer_vm/parity.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/parity.py), comparing this repo against upstream reference traces and, when available, upstream weighted execution
-
-Still missing:
-
-- specialization path
-- full CLI parity for build/run/compile/specialize
+- local parity harness in [`mlx_transformer_vm/parity.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/parity.py), compiling vendored examples and optionally checking the upstream weighted runtime as an oracle
+- local compiler fixtures in [`examples/hello.c`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/examples/hello.c), [`examples/addition.c`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/examples/addition.c), [`examples/collatz.c`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/examples/collatz.c), and [`examples/fibonacci.c`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/examples/fibonacci.c)
+- CLI parity for `wasm-build`, `wasm-run`, `wasm-compile`, and `wasm-specialize`
 
 ## Upstream Mapping
 
@@ -40,7 +37,7 @@ The port stays structurally close to upstream:
 | `transformer_vm/model/weights.py` | `mlx_transformer_vm/model/weights.py` |
 | `transformer_vm/model/transformer.py` | `mlx_transformer_vm/model/transformer.py` |
 | `transformer_vm/scheduler/milp.py` | `mlx_transformer_vm/scheduler/milp.py` |
-| `transformer_vm/compilation/*` | `mlx_transformer_vm/compilation/` (planned) |
+| `transformer_vm/compilation/*` | `mlx_transformer_vm/compilation/` |
 
 ## Development
 
@@ -56,7 +53,7 @@ Run the fast unit tests:
 uv run pytest mlx_transformer_vm/tests/test_graph_core.py
 ```
 
-Run the parity tests against the upstream repository:
+Run the parity tests against the vendored local examples:
 
 ```bash
 uv run pytest mlx_transformer_vm/tests/test_parity.py
@@ -68,12 +65,18 @@ Run the evaluator on a compiled token program:
 uv run wasm-eval-mlx /path/to/program.txt
 ```
 
-Diff this port against the upstream examples:
+Diff this port against the local examples:
 
 ```bash
 uv run tvm-mlx-parity --examples hello addition collatz fibonacci
 ```
 
-The parity harness expects the upstream repository at
-`/Users/tmc/go/src/github.com/Percepta-Core/transformer-vm`. Set
-`TRANSFORMER_VM_UPSTREAM_ROOT` to override that path.
+Enable the optional upstream weighted oracle explicitly:
+
+```bash
+uv run tvm-mlx-parity --weighted --examples hello addition collatz fibonacci
+```
+
+The upstream repository is optional and is only used for the weighted-oracle
+comparison path in [`mlx_transformer_vm/parity.py`](/Volumes/tmc/go/src/github.com/tmc/mlx-transformer-vm/mlx_transformer_vm/parity.py).
+Set `TRANSFORMER_VM_UPSTREAM_ROOT` to enable that path.

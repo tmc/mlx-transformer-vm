@@ -1,0 +1,9 @@
+programs:
+  - name: hello
+    args: "World"
+  - name: addition
+    args: "12345+6789"
+  - name: collatz
+    args: "7"
+  - name: fibonacci
+    args: "10"

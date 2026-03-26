@@ -11,7 +11,6 @@ from pathlib import Path
 from mlx.utils import tree_flatten
 
 from mlx_transformer_vm.model.weights import build_model, save_weights
-from mlx_transformer_vm.wasm.interpreter import WASMMachine
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +51,17 @@ def parse_program(filepath):
     return instructions
 
 
+def program_prefix_from_txt(filepath):
+    """Return the full universal-model prefix tokens through ``}``."""
+
+    tokens = Path(filepath).read_text().split()
+    try:
+        end = tokens.index("}")
+    except ValueError as err:
+        raise ValueError(f"no '}}' found in {filepath}") from err
+    return tokens[: end + 1]
+
+
 def spec_input_from_txt(filepath):
     """Extract the specialized-model input sequence from a compiled ``.txt`` file."""
 
@@ -64,21 +74,15 @@ def spec_input_from_txt(filepath):
 
 
 def specialize(filepath):
-    """Return a model specialized to the program in ``filepath``."""
+    """Return a universal model plus a baked program prefix."""
 
     instructions = parse_program(filepath)
     logger.info("parsed %d instructions from %s", len(instructions), filepath)
 
-    program_graph = WASMMachine(program=instructions).build()
-    logger.info(
-        "  %d dims, %d lookups, %d input tokens, %d output tokens",
-        len(program_graph.all_dims),
-        len(program_graph.all_lookups),
-        len(program_graph.input_tokens),
-        len(program_graph.output_tokens),
-    )
-
-    model, all_tokens, tok_to_idx_map, _shared = build_model(program_graph=program_graph)
+    prefix_tokens = program_prefix_from_txt(filepath)
+    model, all_tokens, tok_to_idx_map, _shared = build_model()
+    model.prefill_tokens = prefix_tokens
+    logger.info("  baked prefix tokens: %d", len(prefix_tokens))
     return model, all_tokens, tok_to_idx_map, instructions
 
 
@@ -119,6 +123,7 @@ def main():
             "model_kind": "specialized",
             "program_path": str(program_path),
             "instruction_count": len(instructions),
+            "prefill_tokens": getattr(model, "prefill_tokens", None),
         },
     )
 

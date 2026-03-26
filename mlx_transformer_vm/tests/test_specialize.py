@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from mlx_transformer_vm.attention import StandardKVCache
+from mlx_transformer_vm.build import build
 from mlx_transformer_vm.compilation.compile_wasm import compile_program, find_clang
 from mlx_transformer_vm.graph import core as graph
 from mlx_transformer_vm.graph.core import (
@@ -17,8 +18,7 @@ from mlx_transformer_vm.graph.core import (
 )
 from mlx_transformer_vm.model import build_model, load_weights, save_weights
 from mlx_transformer_vm.runner import run_model_tokens
-from mlx_transformer_vm.specialize import spec_input_from_txt, specialize
-from mlx_transformer_vm.wasm.reference import generate_ref
+from mlx_transformer_vm.specialize import program_prefix_from_txt, spec_input_from_txt, specialize
 
 
 def _build_custom_graph():
@@ -92,10 +92,10 @@ def test_specialize_matches_reference_on_constant_program(tmp_path):
 
     out_base = tmp_path / "hello"
     txt_path, spec_path, _input_base = compile_program(str(source), out_base=str(out_base))
-    ref_path = tmp_path / "hello_ref.txt"
-    generate_ref(str(txt_path), str(ref_path))
-
     model, all_tokens, tok_to_idx_map, _instructions = specialize(txt_path)
+    universal_model, universal_tokens, universal_map = build()
+    universal_prompt = Path(txt_path).read_text().split()
+
     predicted = run_model_tokens(
         model,
         all_tokens,
@@ -103,12 +103,18 @@ def test_specialize_matches_reference_on_constant_program(tmp_path):
         spec_input_from_txt(txt_path),
         cache_class=StandardKVCache,
     )
-    ref_tokens = ref_path.read_text().split()
-    ref_exec = ref_tokens[ref_tokens.index("}") + 1 :]
+    universal_predicted = run_model_tokens(
+        universal_model,
+        universal_tokens,
+        universal_map,
+        universal_prompt,
+        cache_class=StandardKVCache,
+    )
 
     assert predicted[0] == "start"
-    assert predicted[1:] == ref_exec
     assert Path(spec_path).read_text().split() == ["start"]
+    assert model.prefill_tokens == program_prefix_from_txt(txt_path)
+    assert predicted[1:] == universal_predicted[len(universal_prompt) :]
 
 
 def test_compile_program_smoke(tmp_path):

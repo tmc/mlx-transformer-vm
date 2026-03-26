@@ -118,6 +118,31 @@ WASM_TO_NAME = {
 # ── C -> WASM compilation ──────────────────────────────────────────
 
 
+def _homebrew_prefix(formula: str) -> Path | None:
+    brew = shutil.which("brew")
+    if brew is None:
+        return None
+    try:
+        out = subprocess.check_output([brew, "--prefix", formula], text=True).strip()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+    return Path(out) if out else None
+
+
+def _unique_paths(paths):
+    out = []
+    seen = set()
+    for path in paths:
+        if path is None:
+            continue
+        path = str(path)
+        if path in seen:
+            continue
+        seen.add(path)
+        out.append(path)
+    return out
+
+
 def find_clang() -> str:
     """Find a clang binary with wasm32 target support.
 
@@ -131,34 +156,134 @@ def find_clang() -> str:
     if env_path:
         candidates.append(env_path)
 
+    llvm_prefix = _homebrew_prefix("llvm")
     which_clang = shutil.which("clang")
     if which_clang:
         candidates.append(which_clang)
 
-    candidates.extend([
-        # macOS (Homebrew)
-        "/opt/homebrew/opt/llvm/bin/clang",
-        "/usr/local/opt/llvm/bin/clang",
-        # Linux
-        "/usr/lib/llvm-18/bin/clang",
-        "/usr/lib/llvm-17/bin/clang",
-        "/usr/lib/llvm-16/bin/clang",
-        "/usr/bin/clang",
-    ])
+    if llvm_prefix is not None:
+        candidates.append(llvm_prefix / "bin" / "clang")
+
+    candidates.extend(
+        [
+            # macOS (Homebrew)
+            Path.home() / ".local/homebrew/opt/llvm/bin/clang",
+            "/opt/homebrew/opt/llvm/bin/clang",
+            "/usr/local/opt/llvm/bin/clang",
+            # Linux
+            "/usr/lib/llvm-18/bin/clang",
+            "/usr/lib/llvm-17/bin/clang",
+            "/usr/lib/llvm-16/bin/clang",
+            "/usr/bin/clang",
+        ]
+    )
 
     for cc in candidates:
         try:
             out = subprocess.check_output(
-                [cc, "--print-targets"], stderr=subprocess.DEVNULL, text=True
+                [str(cc), "--print-targets"], stderr=subprocess.DEVNULL, text=True
             )
             if "wasm32" in out:
-                return cc
+                return str(cc)
         except (FileNotFoundError, subprocess.CalledProcessError):
             continue
     raise RuntimeError(
         "No clang with wasm32 target found. "
         "Install LLVM with wasm32 support or set the CLANG_PATH environment variable."
     )
+
+
+def find_wasm_ld() -> str:
+    """Find a wasm linker compatible with clang's wasm32 driver."""
+
+    candidates = []
+    env_path = os.environ.get("WASM_LD_PATH")
+    if env_path:
+        candidates.append(env_path)
+
+    which = shutil.which("wasm-ld")
+    if which:
+        candidates.append(which)
+
+    lld_prefix = _homebrew_prefix("lld")
+    llvm_prefix = _homebrew_prefix("llvm")
+    for prefix in (lld_prefix, llvm_prefix):
+        if prefix is None:
+            continue
+        candidates.extend([prefix / "bin" / "wasm-ld", prefix / "bin" / "ld.lld"])
+
+    candidates.extend(
+        [
+            Path.home() / ".local/homebrew/opt/lld/bin/wasm-ld",
+            Path.home() / ".local/homebrew/opt/lld/bin/ld.lld",
+            Path.home() / ".local/homebrew/opt/llvm/bin/wasm-ld",
+            Path.home() / ".local/homebrew/opt/llvm/bin/ld.lld",
+            "/opt/homebrew/opt/lld/bin/wasm-ld",
+            "/opt/homebrew/opt/lld/bin/ld.lld",
+            "/opt/homebrew/opt/llvm/bin/wasm-ld",
+            "/opt/homebrew/opt/llvm/bin/ld.lld",
+            "/usr/local/opt/lld/bin/wasm-ld",
+            "/usr/local/opt/lld/bin/ld.lld",
+            "/usr/local/opt/llvm/bin/wasm-ld",
+            "/usr/local/opt/llvm/bin/ld.lld",
+            "/usr/lib/llvm-18/bin/wasm-ld",
+            "/usr/lib/llvm-18/bin/ld.lld",
+            "/usr/lib/llvm-17/bin/wasm-ld",
+            "/usr/lib/llvm-17/bin/ld.lld",
+            "/usr/lib/llvm-16/bin/wasm-ld",
+            "/usr/lib/llvm-16/bin/ld.lld",
+        ]
+    )
+
+    for path in candidates:
+        if path and os.path.exists(path):
+            return str(path)
+    raise RuntimeError(
+        "No wasm linker found. Install lld or set WASM_LD_PATH to wasm-ld or ld.lld."
+    )
+
+
+def find_wasm_opt() -> str:
+    """Find the binaryen wasm-opt optimizer expected by the clang toolchain."""
+
+    candidates = []
+    env_path = os.environ.get("WASM_OPT_PATH")
+    if env_path:
+        candidates.append(env_path)
+
+    which = shutil.which("wasm-opt")
+    if which:
+        candidates.append(which)
+
+    binaryen_prefix = _homebrew_prefix("binaryen")
+    if binaryen_prefix is not None:
+        candidates.append(binaryen_prefix / "bin" / "wasm-opt")
+
+    candidates.extend(
+        [
+            Path.home() / ".local/homebrew/bin/wasm-opt",
+            Path.home() / ".local/homebrew/opt/binaryen/bin/wasm-opt",
+            "/opt/homebrew/bin/wasm-opt",
+            "/opt/homebrew/opt/binaryen/bin/wasm-opt",
+            "/usr/local/bin/wasm-opt",
+            "/usr/local/opt/binaryen/bin/wasm-opt",
+        ]
+    )
+
+    for path in candidates:
+        if path and os.path.exists(path):
+            return str(path)
+    raise RuntimeError("No wasm-opt found. Install binaryen or set WASM_OPT_PATH.")
+
+
+def has_wasm_toolchain() -> bool:
+    try:
+        find_clang()
+        find_wasm_ld()
+        find_wasm_opt()
+    except Exception:
+        return False
+    return True
 
 
 def compile_c_to_wasm(c_path: str) -> str:
@@ -168,6 +293,8 @@ def compile_c_to_wasm(c_path: str) -> str:
     if not os.path.exists(runtime_h):
         raise FileNotFoundError(f"runtime.h not found at {runtime_h}")
     cc = find_clang()
+    wasm_ld = find_wasm_ld()
+    wasm_opt = find_wasm_opt()
     cmd = [
         cc,
         "--target=wasm32",
@@ -187,8 +314,18 @@ def compile_c_to_wasm(c_path: str) -> str:
         wasm_path,
         c_path,
     ]
+    tool_dirs = _unique_paths(
+        [
+            Path(cc).resolve().parent,
+            Path(wasm_ld).resolve().parent,
+            Path(wasm_opt).resolve().parent,
+        ]
+    )
+    env = os.environ.copy()
+    path_parts = tool_dirs + ([env["PATH"]] if env.get("PATH") else [])
+    env["PATH"] = os.pathsep.join(path_parts)
     logger.info("Compiling %s -> %s", c_path, wasm_path)
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if result.returncode != 0:
         raise RuntimeError(
             f"clang failed (exit {result.returncode}) compiling {c_path}:\n"

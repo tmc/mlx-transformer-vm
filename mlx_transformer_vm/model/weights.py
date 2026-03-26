@@ -617,6 +617,9 @@ def load_weights(path):
             model.ffn_erase = metadata["ffn_erase"]
         if metadata.get("head_tiebreak") is not None:
             model.head_tiebreak = metadata["head_tiebreak"]
+        extra = metadata.get("extra") or {}
+        if extra.get("prefill_tokens") is not None:
+            model.prefill_tokens = extra["prefill_tokens"]
 
     all_tokens = metadata["all_tokens"]
     tok_to_idx_map = {token: index for index, token in enumerate(all_tokens)}

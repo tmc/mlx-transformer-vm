@@ -50,5 +50,5 @@ known-first-party = ["mlx_transformer_vm"]
 testpaths = ["mlx_transformer_vm/tests"]
 addopts = "-v --tb=short"
 markers = [
-    "slow: marks tests that compile upstream examples",
+    "slow: marks tests that compile local C examples",
 ]

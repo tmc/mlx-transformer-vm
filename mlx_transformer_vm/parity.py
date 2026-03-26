@@ -1,23 +1,24 @@
-"""Helpers for comparing this port against the upstream repository."""
+"""Helpers for comparing this port against local examples and optional upstream oracles."""
 
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 import logging
 import os
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
+from mlx_transformer_vm.compilation.compile_wasm import (
+    DEFAULT_EXAMPLES_ROOT,
+    compile_program,
+)
 from mlx_transformer_vm.evaluator import generate_trace
 from mlx_transformer_vm.wasm.reference import generate_ref
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_UPSTREAM_ROOT = Path("/Users/tmc/go/src/github.com/Percepta-Core/transformer-vm")
 DEFAULT_EXAMPLES = {
     "hello": "World",
     "addition": "12345+6789",
@@ -26,36 +27,37 @@ DEFAULT_EXAMPLES = {
 }
 
 
-def upstream_root():
-    root = Path(os.environ.get("TRANSFORMER_VM_UPSTREAM_ROOT", DEFAULT_UPSTREAM_ROOT))
+def examples_root():
+    root = Path(os.environ.get("MLX_TRANSFORMER_VM_EXAMPLES_DIR", DEFAULT_EXAMPLES_ROOT))
     if not root.exists():
         raise FileNotFoundError(
-            f"upstream repo not found at {root}; set TRANSFORMER_VM_UPSTREAM_ROOT to override"
+            f"local examples not found at {root}; set MLX_TRANSFORMER_VM_EXAMPLES_DIR to override"
         )
     return root
 
 
-def _load_upstream_modules():
-    root = upstream_root()
-    root_str = str(root)
-    if root_str not in sys.path:
-        sys.path.insert(0, root_str)
-    compile_wasm = importlib.import_module("transformer_vm.compilation.compile_wasm")
-    reference = importlib.import_module("transformer_vm.wasm.reference")
-    return compile_wasm, reference
-
-
-def has_upstream_wasm_toolchain():
-    try:
-        compile_wasm, _reference = _load_upstream_modules()
-        compile_wasm.find_clang()
-    except Exception:
-        return False
-    return True
+def upstream_root(required: bool = False):
+    root_env = os.environ.get("TRANSFORMER_VM_UPSTREAM_ROOT")
+    if not root_env:
+        if required:
+            raise FileNotFoundError(
+                "TRANSFORMER_VM_UPSTREAM_ROOT is not set; set it to enable the upstream weighted oracle"
+            )
+        return None
+    root = Path(root_env)
+    if root.exists():
+        return root
+    if required:
+        raise FileNotFoundError(
+            f"upstream repo not found at {root}; set TRANSFORMER_VM_UPSTREAM_ROOT to override"
+        )
+    return None
 
 
 def has_upstream_weighted_runtime():
     root = upstream_root()
+    if root is None:
+        return False
     try:
         result = subprocess.run(
             ["uv", "run", "--python", "3.11", "python", "-c", "import torch, yaml, pulp"],
@@ -70,22 +72,22 @@ def has_upstream_weighted_runtime():
 
 
 def compile_example(example, args, out_dir):
-    compile_wasm, reference = _load_upstream_modules()
-    root = upstream_root()
-    out_base = out_dir / example
-    source = root / "transformer_vm" / "examples" / f"{example}.c"
+    root = examples_root()
+    out_base = Path(out_dir) / example
+    source = root / f"{example}.c"
     if not source.exists():
-        raise FileNotFoundError(f"missing upstream example source: {source}")
-    compile_wasm.compile_program(str(source), args, str(out_base))
+        raise FileNotFoundError(f"missing local example source: {source}")
+    compile_program(str(source), args, str(out_base))
     program_path = out_base.with_suffix(".txt")
-    reference.generate_ref(str(program_path))
-    return program_path, program_path.with_name(program_path.stem + "_ref.txt")
+    ref_path = out_base.with_name(out_base.name + "_ref.txt")
+    generate_ref(str(program_path), str(ref_path))
+    return program_path, ref_path
 
 
 def _run_upstream_weighted(program_infos, workdir):
     """Run upstream weighted execution in the upstream uv environment."""
 
-    root = upstream_root()
+    root = upstream_root(required=True)
     build_dir = Path(workdir) / ".upstream-weighted"
     build_dir.mkdir(parents=True, exist_ok=True)
 
@@ -154,7 +156,7 @@ print(json.dumps(results))
     return json.loads(result.stdout)
 
 
-def compare_examples(examples=None, workdir=None, include_weighted=True):
+def compare_examples(examples=None, workdir=None, include_weighted=False):
     if examples is None:
         examples = list(DEFAULT_EXAMPLES.items())
     if isinstance(examples, dict):
@@ -170,7 +172,7 @@ def compare_examples(examples=None, workdir=None, include_weighted=True):
     try:
         compiled = []
         for example, args in examples:
-            logger.info("Checking %s", example)
+            logger.info("checking %s", example)
             program_path, ref_path = compile_example(example, args, out_dir)
             compiled.append(
                 {
@@ -219,13 +221,15 @@ def compare_examples(examples=None, workdir=None, include_weighted=True):
             workdir_obj.cleanup()
 
 
-def compare_example(example, args, out_dir, include_weighted=True):
+def compare_example(example, args, out_dir, include_weighted=False):
     return compare_examples([(example, args)], workdir=out_dir, include_weighted=include_weighted)[0]
 
 
 def main():
     logging.basicConfig(level=logging.INFO)
-    parser = argparse.ArgumentParser(description="Compare this port against the upstream examples.")
+    parser = argparse.ArgumentParser(
+        description="Compare this port against local examples and the optional upstream weighted oracle."
+    )
     parser.add_argument(
         "--examples",
         nargs="*",
@@ -238,14 +242,14 @@ def main():
         help="Directory for compiled parity fixtures (defaults to a temporary directory)",
     )
     parser.add_argument(
-        "--no-weighted",
+        "--weighted",
         action="store_true",
-        help="Skip the upstream weighted-runtime comparison",
+        help="Enable the optional upstream weighted-runtime comparison",
     )
     args = parser.parse_args()
 
     selected = [(name, DEFAULT_EXAMPLES[name]) for name in args.examples]
-    results = compare_examples(selected, workdir=args.workdir, include_weighted=not args.no_weighted)
+    results = compare_examples(selected, workdir=args.workdir, include_weighted=args.weighted)
 
     failed = False
     for result in results:

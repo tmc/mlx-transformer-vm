@@ -74,13 +74,19 @@ def run_model_tokens(
     cache_class=HullKVCache,
 ):
     cache = _configure_cache(model, cache_class)
+    raw_tokens = list(tokens)
+    prefill_tokens = list(getattr(model, "prefill_tokens", []))
+    input_tokens = raw_tokens
+    if prefill_tokens and raw_tokens and raw_tokens[0] == "start":
+        input_tokens = raw_tokens[1:]
+
     token_ids = []
-    for token in tokens:
+    for token in prefill_tokens + input_tokens:
         if token not in tok_to_idx_map:
             raise ValueError(f"token {token!r} not present in model vocabulary")
         token_ids.append(tok_to_idx_map[token])
 
-    predicted = list(tokens)
+    predicted = raw_tokens
     logits = None
     for pos, token_id in enumerate(token_ids):
         logits = model.step_logits(token_id, pos, cache)
