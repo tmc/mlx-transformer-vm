@@ -24,6 +24,36 @@ Ported now:
 - local compiler fixtures in [`examples/hello.c`](examples/hello.c), [`examples/addition.c`](examples/addition.c), [`examples/collatz.c`](examples/collatz.c), and [`examples/fibonacci.c`](examples/fibonacci.c)
 - CLI parity for `wasm-build`, `wasm-run`, `wasm-compile`, and `wasm-specialize`
 
+## Architecture: Precision and the Float32 Boundary
+
+The system has two distinct execution paths with different precision
+requirements:
+
+**MLX transformer runner** (`runner.py`, `model/transformer.py`): Runs the
+learned transformer on Apple Silicon via MLX float32. This path computes
+dot-product scores and argmax for hardmax attention — float32 is sufficient
+for these operations at the model dimensions we use (d_model~36, n_heads~18).
+
+**Exact graph evaluator** (`evaluator.py`): Evaluates the computation graph
+with exact arithmetic using Python float64. The convex hull cache that
+provides O(log n) attention lookups operates entirely in float64 (Python
+floats or C++ double), **not** on the GPU.
+
+This separation is load-bearing. The hull's key geometry uses parabolic
+coordinates `(2k, -k^2)` where cross-product sign determines hull
+membership. At sequence position k=4095, float32 cross-products lose exact
+magnitude; at k=4097, the sign itself becomes unreliable (~58% error rate
+above k=4096). A GPU-only float32 convex hull would silently corrupt
+results for sequences longer than ~4k tokens.
+
+The C++ pybind11 extension (`hull_cache.py`) is optional — a pure Python
+hull (`hull_python.py`) provides identical correctness at ~9x slower
+throughput. Both use float64. The C++ extension remains available for
+performance-sensitive workloads but is not required.
+
+See `tests/test_precision_limits.py` for empirical verification of these
+bounds.
+
 ## Upstream Mapping
 
 The port stays structurally close to upstream:
