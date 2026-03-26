@@ -93,6 +93,46 @@ class HullAttention:
         return out_flat[: self.nv]
 
 
+class PythonHullAttention:
+    """Per-lookup O(log n) attention using pure Python convex hull."""
+
+    def __init__(self, lookup):
+        from mlx_transformer_vm.attention.hull_python import HardAttentionHead, AVERAGE, LATEST
+
+        self.lookup = lookup
+        self.nv = len(lookup.value_exprs)
+        self.num_value_pairs = (self.nv + 1) // 2
+        self._heads = [HardAttentionHead() for _ in range(self.num_value_pairs)]
+        self._tb = LATEST if lookup.tie_break == "latest" else AVERAGE
+        self.seq = -1
+
+    def clear(self):
+        for h in self._heads:
+            h.clear()
+        self.seq = -1
+
+    def insert_and_query(self, vals, seq):
+        lu = self.lookup
+        kx = lu.key_exprs_2d[0].evaluate(vals)
+        ky = lu.key_exprs_2d[1].evaluate(vals)
+        qx = lu.query_exprs_2d[0].evaluate(vals)
+        qy = lu.query_exprs_2d[1].evaluate(vals)
+
+        nvp = self.num_value_pairs
+        raw_vals = [v.evaluate(vals) for v in lu.value_exprs]
+        while len(raw_vals) < nvp * 2:
+            raw_vals.append(0.0)
+
+        self.seq += 1
+        results = []
+        for p in range(nvp):
+            h = self._heads[p]
+            h.insert(kx, ky, raw_vals[p * 2], raw_vals[p * 2 + 1], self.seq)
+            o0, o1 = h.query(qx, qy, self._tb)
+            results.extend([o0, o1])
+        return results[: self.nv]
+
+
 class BruteAttention:
     """Per-lookup exact hard-attention cache."""
 
@@ -143,12 +183,24 @@ class BruteAttention:
 class Runtime:
     """Exact graph evaluator for a :class:`ProgramGraph`."""
 
-    def __init__(self, use_hull=True, program_graph=None):
+    def __init__(self, use_hull=True, force_python=False, program_graph=None):
         self.use_hull = use_hull
-        self.hull_ext = _load_hull() if use_hull else None
-        if use_hull and self.hull_ext is None:
-            logger.warning("hull extension unavailable; falling back to brute-force")
-            self.use_hull = False
+        self.use_python_hull = False
+        self.hull_ext = None
+        if use_hull:
+            if not force_python:
+                self.hull_ext = _load_hull()
+            if self.hull_ext is not None:
+                logger.debug("using C++ hull extension")
+            else:
+                try:
+                    from mlx_transformer_vm.attention.hull_python import HardAttentionHead  # noqa: F401
+
+                    self.use_python_hull = True
+                    logger.debug("using pure Python hull")
+                except ImportError:
+                    logger.warning("hull unavailable; falling back to brute-force")
+                    self.use_hull = False
 
         if program_graph is not None:
             self.input_tokens = program_graph.input_tokens
@@ -183,7 +235,9 @@ class Runtime:
 
         self.attention = {}
         for lookup in self.all_lookups:
-            if self.use_hull:
+            if self.use_python_hull:
+                self.attention[lookup.id] = PythonHullAttention(lookup)
+            elif self.use_hull:
                 self.attention[lookup.id] = HullAttention(lookup, self.hull_ext)
             else:
                 self.attention[lookup.id] = BruteAttention(lookup)
@@ -274,7 +328,7 @@ def generate_trace(tokens, runtime=None, max_steps=50000):
     return predicted
 
 
-def run_program(program_file, ref_file=None, use_hull=False, verbose=False):
+def run_program(program_file, ref_file=None, use_hull=True, force_python=False, verbose=False):
     """Run a compiled token program and optionally compare with a reference trace."""
 
     with open(program_file) as handle:
@@ -285,7 +339,9 @@ def run_program(program_file, ref_file=None, use_hull=False, verbose=False):
         with open(ref_file) as handle:
             ref_tokens = handle.read().split()
 
-    predicted = generate_trace(tokens, runtime=Runtime(use_hull=use_hull))
+    predicted = generate_trace(
+        tokens, runtime=Runtime(use_hull=use_hull, force_python=force_python)
+    )
     if verbose:
         logger.info("Tokens: %s", " ".join(predicted))
 
@@ -314,7 +370,12 @@ def main():
         description="Evaluate token programs through the computation graph."
     )
     parser.add_argument("files", nargs="+", help="Program .txt files to evaluate")
-    parser.add_argument("--nohull", action="store_true", help="Ignore hull cache support")
+    parser.add_argument("--nohull", action="store_true", help="Use brute-force O(n) attention")
+    parser.add_argument(
+        "--python",
+        action="store_true",
+        help="Force pure Python hull (skip C++ extension even if available)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Print the full token trace")
     args = parser.parse_args()
 
@@ -326,6 +387,7 @@ def main():
             program_file,
             ref_file if has_ref else None,
             use_hull=not args.nohull,
+            force_python=args.python,
             verbose=args.verbose,
         )
         logger.info("%s: %s", program_file, "PASS" if ok else "FAIL")

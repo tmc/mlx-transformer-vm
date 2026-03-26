@@ -10,7 +10,7 @@ from pathlib import Path
 
 import mlx.core as mx
 
-from mlx_transformer_vm.attention import HullKVCache, StandardKVCache, has_hull_extension
+from mlx_transformer_vm.attention import OptimizedKVCache, StandardKVCache
 from mlx_transformer_vm.build import build
 from mlx_transformer_vm.compilation.compile_wasm import compile_program
 from mlx_transformer_vm.model.weights import flops_per_token, load_weights, save_weights
@@ -71,7 +71,7 @@ def run_model_tokens(
     tok_to_idx_map,
     tokens,
     max_new_tokens=50000,
-    cache_class=HullKVCache,
+    cache_class=OptimizedKVCache,
 ):
     cache = _configure_cache(model, cache_class)
     raw_tokens = list(tokens)
@@ -115,7 +115,7 @@ def run_model_program(
     ref_file=None,
     max_new_tokens=50000,
     verbose=False,
-    cache_class=HullKVCache,
+    cache_class=OptimizedKVCache,
 ):
     tokens = Path(program_file).read_text().split()
     predicted = run_model_tokens(
@@ -171,10 +171,7 @@ def _default_ref_file(program_file):
 def _cache_class(nohull):
     if nohull:
         return StandardKVCache
-    if has_hull_extension():
-        return HullKVCache
-    logger.info("[engine] hull extension unavailable; falling back to StandardKVCache")
-    return StandardKVCache
+    return OptimizedKVCache
 
 
 def main():
