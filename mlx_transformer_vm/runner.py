@@ -102,7 +102,7 @@ def run_model_tokens(
         if next_id == model.stop_token_id:
             break
         logits = model.step_logits(next_id, len(token_ids) + gen_idx, cache)
-        mx.eval(logits)
+        mx.async_eval(logits)
 
     return predicted
 

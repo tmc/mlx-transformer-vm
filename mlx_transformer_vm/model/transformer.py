@@ -13,6 +13,14 @@ from mlx_transformer_vm.attention import StandardKVCache
 DEFAULT_DTYPE = mx.float32
 
 
+@mx.compile
+def _compiled_reglu_ffn(x, ff_in_w, ff_out_w):
+    """Compiled ReGLU FFN: gate/value split, relu-gate, output projection."""
+    gate_and_value = ff_in_w @ x
+    gate, value = mx.split(gate_and_value, 2)
+    return ff_out_w @ (nn.relu(gate) * value)
+
+
 def add_position_encoding(x, pos):
     """Add the upstream deterministic position features in place."""
 
@@ -75,9 +83,7 @@ class VanillaTransformer(nn.Module):
             attn_out = cache.layer_step(layer_idx, k, q, v)
             x = x + self.attn[layer_idx].out_proj(attn_out)
 
-            gate_and_value = self.ff_in[layer_idx](x)
-            gate, value = mx.split(gate_and_value, 2)
-            x = x + self.ff_out[layer_idx](nn.relu(gate) * value)
+            x = x + _compiled_reglu_ffn(x, self.ff_in[layer_idx].weight, self.ff_out[layer_idx].weight)
 
         return self.head(x)
 
@@ -107,6 +113,6 @@ class VanillaTransformer(nn.Module):
             if next_id == self.stop_token_id:
                 break
             logits = self.step_logits(next_id, prompt_len + gen_idx, cache)
-            mx.eval(logits)
+            mx.async_eval(logits)
 
         return mx.array([idx_list], dtype=mx.int32)
