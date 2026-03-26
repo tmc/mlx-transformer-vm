@@ -1,0 +1,3 @@
+include LICENSE NOTICE
+recursive-include mlx_transformer_vm *.h
+recursive-include examples *.c *.yaml
