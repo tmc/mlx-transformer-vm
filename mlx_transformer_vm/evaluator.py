@@ -9,6 +9,8 @@ import math
 import os
 from pathlib import Path
 
+import numpy as np
+
 from mlx_transformer_vm.graph.core import (
     CumSumDimension,
     LookUpDimension,
@@ -35,6 +37,60 @@ def _get_default_graph():
     if _default_graph is None:
         _default_graph = _build_default_graph()
     return _default_graph
+
+
+def _load_hull():
+    try:
+        from mlx_transformer_vm.attention.hull_cache import _load_ext
+
+        return _load_ext()
+    except Exception as e:
+        logger.warning("could not load hull extension: %s", e)
+        return None
+
+
+class HullAttention:
+    """Per-lookup O(log n) attention using pybind11 convex hull."""
+
+    def __init__(self, lookup, ext):
+        self.lookup = lookup
+        nv = len(lookup.value_exprs)
+        self.num_value_pairs = (nv + 1) // 2
+        self.nv = nv
+        self.cache = ext.HullKVCache(1, self.num_value_pairs)
+        self.seq = -1
+
+    def clear(self):
+        self.cache.clear()
+        self.seq = -1
+
+    def insert_and_query(self, vals, seq):
+        lu = self.lookup
+        kx = lu.key_exprs_2d[0].evaluate(vals)
+        ky = lu.key_exprs_2d[1].evaluate(vals)
+        qx = lu.query_exprs_2d[0].evaluate(vals)
+        qy = lu.query_exprs_2d[1].evaluate(vals)
+
+        nvp = self.num_value_pairs
+        raw_vals = [v.evaluate(vals) for v in lu.value_exprs]
+        while len(raw_vals) < nvp * 2:
+            raw_vals.append(0.0)
+
+        keys = np.zeros((nvp, 2))
+        values = np.zeros((nvp, 2))
+        queries = np.zeros((nvp, 2))
+        for p in range(nvp):
+            keys[p, 0] = kx
+            keys[p, 1] = ky
+            values[p, 0] = raw_vals[p * 2]
+            values[p, 1] = raw_vals[p * 2 + 1]
+            queries[p, 0] = qx
+            queries[p, 1] = qy
+
+        self.seq += 1
+        out = self.cache.layer_step(0, keys, queries, values, self.seq)
+        out_flat = out.reshape(-1).tolist()
+        return out_flat[: self.nv]
 
 
 class BruteAttention:
@@ -87,9 +143,12 @@ class BruteAttention:
 class Runtime:
     """Exact graph evaluator for a :class:`ProgramGraph`."""
 
-    def __init__(self, use_hull=False, program_graph=None):
-        if use_hull:
-            logger.warning("Hull attention is not ported yet; falling back to brute-force")
+    def __init__(self, use_hull=True, program_graph=None):
+        self.use_hull = use_hull
+        self.hull_ext = _load_hull() if use_hull else None
+        if use_hull and self.hull_ext is None:
+            logger.warning("hull extension unavailable; falling back to brute-force")
+            self.use_hull = False
 
         if program_graph is not None:
             self.input_tokens = program_graph.input_tokens
@@ -124,7 +183,10 @@ class Runtime:
 
         self.attention = {}
         for lookup in self.all_lookups:
-            self.attention[lookup.id] = BruteAttention(lookup)
+            if self.use_hull:
+                self.attention[lookup.id] = HullAttention(lookup, self.hull_ext)
+            else:
+                self.attention[lookup.id] = BruteAttention(lookup)
 
     def step(self, token_name):
         values = {}
